@@ -50,6 +50,7 @@ func checkURL(db *sqlx.DB, checkID int64, url string) {
 		log.Print(errors.Wrap(err, errText))
 		return
 	}
+	defer resp.Body.Close()
 
 	check.UpdateJob(resp.Status)
 	_, err = models.UpdateCheckJob(db, check)
