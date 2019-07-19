@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/pkg/errors"
 
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/shawnhugginsjr/miru/models"
@@ -20,20 +23,38 @@ func main() {
 
 	db.Exec(models.CheckSchema)
 
-	check := models.NewCheck()
-	check.URL = "https://godoc.org/github.com/pkg/errors"
-	check.Cron = "@hourly"
-	result, err := models.InsertCheck(db, check)
-	if err != nil {
-		log.Fatal(err)
-	}
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(60 * time.Second))
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		log.Fatal(err)
-	}
+	r.Get("/", getAllCheckers)
+	r.Route("/checkers", func(r chi.Router) {
+		r.Post("/", createChecker)       // POST /checkers
+		r.Get("/{id}", getChecker)       // GET /checkers/10
+		r.Delete("/{id}", deleteChecker) // DELETE /checkers/10
+	})
 
-	checkURL(db, id, check.URL)
+	fmt.Println("Listening on port :8000")
+	log.Fatal(http.ListenAndServe(":8000", r))
+}
+
+func getAllCheckers(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("hi"))
+}
+
+func createChecker(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("hi"))
+}
+
+func getChecker(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("hi"))
+}
+
+func deleteChecker(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("hi"))
 }
 
 // checkURL gets the status code of the url and sets the contact times.
