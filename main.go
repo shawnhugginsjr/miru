@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"text/template"
 	"time"
 
 	"github.com/pkg/errors"
@@ -32,6 +33,7 @@ func main() {
 
 	r.Get("/", getAllCheckers)
 	r.Route("/checkers", func(r chi.Router) {
+		r.Get("/new", newChecker)        // GET /checkers/new
 		r.Post("/", createChecker)       // POST /checkers
 		r.Get("/{id}", getChecker)       // GET /checkers/10
 		r.Delete("/{id}", deleteChecker) // DELETE /checkers/10
@@ -45,7 +47,20 @@ func getAllCheckers(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("hi"))
 }
 
+func newChecker(w http.ResponseWriter, r *http.Request) {
+	tmpl := template.Must(template.ParseFiles("static/form.html"))
+	tmpl.Execute(w, nil)
+}
+
 func createChecker(w http.ResponseWriter, r *http.Request) {
+	c := models.CheckForm{}
+	err := c.ExtractFormData(r)
+	if err != nil {
+		// TODO: Redirect not functional.
+		http.Redirect(w, r, "/checkers/new", 200)
+		return
+	}
+
 	w.Write([]byte("hi"))
 }
 

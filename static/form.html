@@ -1,0 +1,24 @@
+<html>
+
+<head>
+</head>
+
+<body>
+  <form action="/checkers" method="post">
+    <label>Job Name:</label>
+    <input type="text" name="name" required>
+    </br>
+    <label>Cron job:</label>
+    <input type="text" name="cron" required>
+    </br>
+    <label>URL:</label>
+    <input type="text" name="url" required>
+    </br>
+    <label>Active:</label>
+    <input type="radio" name="active" value="true" checked> active<br>
+    <input type="radio" name="active" value="false"> in-active<br>
+    <input type="submit" value="Submit">
+  </form>
+</body>
+
+</html>
