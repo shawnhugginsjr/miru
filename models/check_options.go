@@ -8,8 +8,8 @@ import (
 	"github.com/besser/cron"
 )
 
-// CheckForm holds the form post data for creating a Check.
-type CheckForm struct {
+// CheckOptions holds the form post data for creating a Check.
+type CheckOptions struct {
 	Name   string
 	Cron   string
 	URL    string
@@ -18,7 +18,7 @@ type CheckForm struct {
 
 // ExtractFormData extracts the form data into the CheckForm.
 // An error is returned with the reason if the data is invalid.
-func (c *CheckForm) ExtractFormData(r *http.Request) error {
+func (c *CheckOptions) ExtractFormData(r *http.Request) error {
 	c.Name = r.FormValue("name")
 	c.Cron = r.FormValue("cron")
 	c.URL = r.FormValue("url")

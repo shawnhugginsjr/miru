@@ -7,6 +7,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/besser/cron"
 	"github.com/pkg/errors"
 
 	"github.com/go-chi/chi"
@@ -16,13 +17,21 @@ import (
 	"github.com/shawnhugginsjr/miru/models"
 )
 
+var cronRunner *cron.Cron
+var db *sqlx.DB
+
 func main() {
-	db, err := sqlx.Open("sqlite3", "./checks.db")
+	var err error
+	db, err = sqlx.Open("sqlite3", "./checks.db")
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	cronRunner = cron.New()
+	cronRunner.Start()
+
 	db.Exec(models.CheckSchema)
+	initCronJobs(db, cronRunner)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -53,15 +62,26 @@ func newChecker(w http.ResponseWriter, r *http.Request) {
 }
 
 func createChecker(w http.ResponseWriter, r *http.Request) {
-	c := models.CheckForm{}
-	err := c.ExtractFormData(r)
+	checkOption := models.CheckOptions{}
+	err := checkOption.ExtractFormData(r)
 	if err != nil {
 		// TODO: Redirect not functional.
+		fmt.Println(err)
 		http.Redirect(w, r, "/checkers/new", 200)
 		return
 	}
 
-	w.Write([]byte("hi"))
+	check := models.NewCheckFromOptions(&checkOption)
+	err = check.Insert(db, cronRunner)
+
+	if err != nil {
+		// log
+		// send failure page
+		fmt.Println(err)
+		return
+	}
+
+	w.Write([]byte("succusful"))
 }
 
 func getChecker(w http.ResponseWriter, r *http.Request) {
@@ -72,25 +92,33 @@ func deleteChecker(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("hi"))
 }
 
-// checkURL gets the status code of the url and sets the contact times.
-func checkURL(db *sqlx.DB, checkID int64, url string) {
-	check, err := models.GetCheckByID(db, checkID)
+func initCronJobs(db *sqlx.DB, cr *cron.Cron) error {
+	var c models.Check
+	rows, err := db.Queryx("SELECT * FROM checks")
 	if err != nil {
-		log.Print(errors.Wrap(err, "Could not get Check model."))
-		return
+		return errors.Wrap(err, "Could not query database")
 	}
+	for rows.Next() {
+		err = rows.StructScan(&c)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		if !c.Active {
+			continue
+		}
+		entryID, err := cr.AddFunc(c.Cron, c.CreateJobFunc(db))
+		if err != nil {
+			log.Print(err)
+			continue
+		}
+		err = c.SetJob(db, entryID)
+		if err != nil {
+			log.Print(err)
+			cronRunner.Remove(entryID)
+			continue
+		}
 
-	resp, err := http.Get(url)
-	if err != nil {
-		errText := fmt.Sprintf("GET request to %s failed", url)
-		log.Print(errors.Wrap(err, errText))
-		return
 	}
-	defer resp.Body.Close()
-
-	check.UpdateJob(resp.Status)
-	_, err = models.UpdateCheckJob(db, check)
-	if err != nil {
-		log.Print(errors.Wrap(err, "checks row job could not be updated."))
-	}
+	return nil
 }
