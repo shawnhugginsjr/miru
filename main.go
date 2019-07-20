@@ -93,32 +93,36 @@ func deleteChecker(w http.ResponseWriter, r *http.Request) {
 }
 
 func initCronJobs(db *sqlx.DB, cr *cron.Cron) error {
-	var c models.Check
-	rows, err := db.Queryx("SELECT * FROM checks")
+	var checks []models.Check
+	err := db.Select(&checks, "SELECT * FROM checks LIMIT 10")
 	if err != nil {
 		return errors.Wrap(err, "Could not query database")
 	}
-	for rows.Next() {
-		err = rows.StructScan(&c)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
+	for _, c := range checks {
+		fmt.Println("Starting check")
 		if !c.Active {
 			continue
 		}
-		entryID, err := cr.AddFunc(c.Cron, c.CreateJobFunc(db))
+
+		err = c.RefreshNextContact(db)
 		if err != nil {
-			log.Print(err)
-			continue
-		}
-		err = c.SetJob(db, entryID)
-		if err != nil {
-			log.Print(err)
-			cronRunner.Remove(entryID)
+			fmt.Println(err)
 			continue
 		}
 
+		entryID, err := cr.AddFunc(c.Cron, c.CreateJobFunc(db))
+		if err != nil {
+			fmt.Print(err)
+			continue
+		}
+
+		err = c.SetJob(db, entryID)
+		if err != nil {
+			fmt.Print(err)
+			cronRunner.Remove(entryID)
+			continue
+		}
+		fmt.Printf("Cron Job \"%s\" is running\n", c.Name)
 	}
 	return nil
 }

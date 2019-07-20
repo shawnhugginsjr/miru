@@ -3,7 +3,6 @@ package models
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -45,18 +44,21 @@ const (
 	updated_at DATETIME NOT NULL
 );
 `
-	getCheckByIDString    = `SELECT * FROM checks WHERE id = ? LIMIT 1;`
-	saveJobStatusString   = `UPDATE checks SET status = ?, last_contact = ?, next_contact = ?, updated_at = ? WHERE id = ?;`
-	updateCronJobIDString = `UPDATE checks SET job = ? WHERE id = ?`
-	insertCheckString     = `INSERT INTO checks (name, cron, url, status, active, job, last_contact, next_contact, created_at, updated_at) VALUES (?, ?,?,?,?,?,?,?,?,?);`
+	getCheckByIDString        = `SELECT * FROM checks WHERE id = ? LIMIT 1;`
+	setStatusString           = `UPDATE checks SET status = ?, last_contact = ?, next_contact = ?, updated_at = ? WHERE id = ?;`
+	setJobIDString            = `UPDATE checks SET job = ? WHERE id = ?`
+	setJobIDNextContactString = `UPDATE checks SET job = ?, next_contact = ? WHERE id = ?`
+	insertCheckString         = `INSERT INTO checks (name, cron, url, status, active, job, last_contact, next_contact, created_at, updated_at) VALUES (?, ?,?,?,?,?,?,?,?,?);`
+	setNextContactString      = `UPDATE checks SET next_contact = ? WHERE id = ?`
 )
 
 // NewCheck returns a pointer to a Check.
 func NewCheck() *Check {
 	now := time.Now()
 	return &Check{
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		NextContact: now,
 	}
 }
 
@@ -94,14 +96,31 @@ func (c *Check) SetJobStatus(db *sqlx.DB, status string) (sql.Result, error) {
 	c.NextContact = s.Next(currentContact)
 
 	c.UpdatedAt = time.Now()
-	return db.Exec(saveJobStatusString, c.Status, c.LastContact, c.NextContact, c.UpdatedAt, c.ID)
+	return db.Exec(setStatusString, c.Status, c.LastContact, c.NextContact, c.UpdatedAt, c.ID)
 }
 
+// SetJob sets the Job for the Check.
 func (c *Check) SetJob(db *sqlx.DB, job cron.EntryID) error {
 	c.Job = job
-	_, err := db.Exec(updateCronJobIDString, c.Job, c.ID)
+	_, err := db.Exec(setJobIDString, c.Job, c.ID)
 	if err != nil {
 		return errors.Wrap(err, "Could not set Check to a new Job")
+	}
+	return nil
+}
+
+// RefreshNextContact updates the NextContact value for the cron
+// schedule based from the current time.
+func (c *Check) RefreshNextContact(db *sqlx.DB) error {
+	s, err := cron.Parse(c.Cron)
+	if err != nil {
+		return errors.Wrap(err, "Check cron failed to be parsed")
+	}
+
+	c.NextContact = s.Next(time.Now())
+	_, err = db.Exec(setNextContactString, c.NextContact, c.ID)
+	if err != nil {
+		return errors.Wrap(err, "Updateing column next_column failed")
 	}
 	return nil
 }
@@ -112,23 +131,23 @@ func (c *Check) CreateJobFunc(db *sqlx.DB) func() {
 	return func() {
 		check, err := GetCheckByID(db, c.ID)
 		if err != nil {
-			log.Print(errors.Wrap(err, "Could not get Check model."))
+			fmt.Println(errors.Wrap(err, "Could not get Check model."))
 			return
 		}
 
 		resp, err := http.Get(c.URL)
 		if err != nil {
 			errText := fmt.Sprintf("GET request to %s failed", check.URL)
-			log.Print(errors.Wrap(err, errText))
+			fmt.Print(errors.Wrap(err, errText))
 			return
 		}
 		defer resp.Body.Close()
-		log.Printf("%s Check %d: %s %s", time.Now().Format("2006-01-02 15:04:05"),
+		fmt.Printf("%s Check %d: %s %s\n", time.Now().Format("2006-01-02 15:04:05"),
 			check.ID, check.URL, resp.Status)
 
 		_, err = check.SetJobStatus(db, resp.Status)
 		if err != nil {
-			log.Print(errors.Wrap(err, "checks row job could not be updated."))
+			fmt.Println(errors.Wrap(err, "checks row job could not be updated."))
 		}
 	}
 }
@@ -163,12 +182,14 @@ func (c *Check) Insert(db *sqlx.DB, cr *cron.Cron) error {
 			return errors.Wrap(err, "Adding Cron Job failed")
 		}
 
+		s, _ := cron.Parse(c.Cron)
+		c.NextContact = s.Next(time.Now())
 		c.Job = entryID
-		_, err = tx.Exec(updateCronJobIDString, c.Job, c.ID)
+		_, err = tx.Exec(setJobIDNextContactString, c.Job, c.NextContact, c.ID)
 		if err != nil {
 			cr.Remove(entryID)
 			tx.Rollback()
-			return errors.Wrap(err, "Could not set Cron Job ID to Check")
+			return errors.Wrap(err, "Could not set Job ID and next_contact in Check")
 		}
 	}
 	tx.Commit()
