@@ -50,6 +50,7 @@ const (
 	setJobIDNextContactString = `UPDATE checks SET job = ?, next_contact = ? WHERE id = ?`
 	insertCheckString         = `INSERT INTO checks (name, cron, url, status, active, job, last_contact, next_contact, created_at, updated_at) VALUES (?, ?,?,?,?,?,?,?,?,?);`
 	setNextContactString      = `UPDATE checks SET next_contact = ? WHERE id = ?`
+	deleteCheckString         = `DELETE FROM checks WHERE id = ?`
 )
 
 // NewCheck returns a pointer to a Check.
@@ -81,6 +82,20 @@ func GetCheckByID(db *sqlx.DB, id int64) (*Check, error) {
 		return nil, err
 	}
 	return &c, nil
+}
+
+// Delete deletes a Check and removes its Job if active.
+func (c *Check) Delete(db *sqlx.DB, cr *cron.Cron) error {
+	_, err := db.Exec(deleteCheckString, c.ID)
+	if err != nil {
+		return errors.Wrap(err, "Check could not be deleted")
+	}
+
+	if c.Active {
+		cr.Remove(c.Job)
+	}
+
+	return nil
 }
 
 // SetJobStatus sets the new status along with updating the contact times.

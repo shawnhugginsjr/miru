@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"text/template"
 	"time"
 
@@ -89,7 +90,24 @@ func getChecker(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteChecker(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("hi"))
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		w.Write([]byte("Invalid ID"))
+		return
+	}
+
+	check, err := models.GetCheckByID(db, id)
+	if err != nil {
+		w.Write([]byte("That check no longer exists"))
+		return
+	}
+
+	err = check.Delete(db, cronRunner)
+	if err != nil {
+		w.Write([]byte("Could not delete Check"))
+		return
+	}
+	w.Write([]byte("success"))
 }
 
 func initCronJobs(db *sqlx.DB, cr *cron.Cron) error {
