@@ -8,8 +8,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/besser/cron"
 	"github.com/pkg/errors"
+	"gopkg.in/robfig/cron.v2"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -128,7 +128,7 @@ func initCronJobs(db *sqlx.DB, cr *cron.Cron) error {
 			continue
 		}
 
-		entryID, err := cr.AddFunc(c.Cron, c.CreateJobFunc(db))
+		entryID, err := cr.AddFunc(c.Cron, models.CreateJobFunc(db, c.ID, c.URL))
 		if err != nil {
 			fmt.Print(err)
 			continue

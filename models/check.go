@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/besser/cron"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
+	"gopkg.in/robfig/cron.v2"
 )
 
 // Check represents a cron job for a URL.
@@ -142,15 +142,15 @@ func (c *Check) RefreshNextContact(db *sqlx.DB) error {
 
 // CreateJobFunc returns a function that will hit a HTTP endpoint based
 // from the receiver.
-func (c *Check) CreateJobFunc(db *sqlx.DB) func() {
+func CreateJobFunc(db *sqlx.DB, id int64, url string) func() {
 	return func() {
-		check, err := GetCheckByID(db, c.ID)
+		check, err := GetCheckByID(db, id)
 		if err != nil {
-			fmt.Println(errors.Wrap(err, "Could not get Check model."))
+			fmt.Println(errors.Wrapf(err, "Could not get Check for ID %d", id))
 			return
 		}
 
-		resp, err := http.Get(c.URL)
+		resp, err := http.Get(url)
 		if err != nil {
 			errText := fmt.Sprintf("GET request to %s failed", check.URL)
 			fmt.Print(errors.Wrap(err, errText))
@@ -191,7 +191,7 @@ func (c *Check) Insert(db *sqlx.DB, cr *cron.Cron) error {
 	c.ID = id
 
 	if c.Active {
-		entryID, err := cr.AddFunc(c.Cron, c.CreateJobFunc(db))
+		entryID, err := cr.AddFunc(c.Cron, CreateJobFunc(db, c.ID, c.URL))
 		if err != nil {
 			tx.Rollback()
 			return errors.Wrap(err, "Adding Cron Job failed")

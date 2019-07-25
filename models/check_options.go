@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/besser/cron"
+	"gopkg.in/robfig/cron.v2"
 )
 
 // CheckOptions holds the form post data for creating a Check.
